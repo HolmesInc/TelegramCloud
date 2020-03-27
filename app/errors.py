@@ -1,0 +1,2 @@
+class StartUpError(Exception):
+    pass

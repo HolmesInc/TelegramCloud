@@ -1,0 +1,19 @@
+#####
+# Docker compose file
+#
+# For documentation see: https://docs.docker.com/compose/yml/
+#####
+
+# Run docker-compose build
+# Run docker-compose up
+# Live long and prosper
+
+version: '2'
+
+services:
+
+  telegram_cloud_mongodb:
+    image: mongo:4.2
+    container_name: "telegram_cloud_mongodb"
+    ports:
+      - 27017:27017

@@ -1,11 +1,13 @@
 import os
 import pathlib
 from json_log_formatter import JSONFormatter
+from mongoengine import register_connection
+from app.errors import StartUpError
 
 ###################################################################################################
 # Server settings
 ###################################################################################################
-ROOT_DIR = pathlib.Path(
+APP_DIR = pathlib.Path(
     os.path.abspath(os.path.dirname(__file__))
 )
 DEBUG_MODE = os.getenv('DEBUG_MODE', True)
@@ -19,7 +21,7 @@ APP_LOG_FORMAT = (
     '%(message)s\n' +
     '-' * 80
 )
-APP_LOG_DIR = os.getenv('APP_LOG_DIR', f'{ROOT_DIR}/logs/')
+APP_LOG_DIR = os.getenv('APP_LOG_DIR', f'{APP_DIR}/logs/')
 APP_LOG_PATH = f'{APP_LOG_DIR}telegram_cloud.log'
 APP_LOG_FILE_ROTATION_SIZE = int(os.getenv('APP_LOG_FILE_ROTATION_SIZE', 100000))
 APP_LOG_FILE_BACKUP_COUNT = int(os.getenv('APP_LOG_FILE_BACKUP_COUNT', 14))
@@ -77,5 +79,39 @@ LOGGING_CONFIG = {
 }
 
 ###################################################################################################
-#
+# Bot settings
 ###################################################################################################
+TOKEN = os.getenv('TOKEN', None)
+
+###################################################################################################
+# NoSQL DB settings
+###################################################################################################
+MONGO_USER = os.getenv('MONGO_USER', None)
+MONGO_PASSWORD = os.getenv('MONGO_PASSWORD', None)
+MONGO_HOST = os.getenv('MONGO_HOST', None)
+MONGO_PORT = os.getenv('MONGO_PORT', None)
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', None)
+MONGO_CONNECTION_URL = f'mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB_NAME}'
+MONGO_ENGINE_ALIAS = 'core'
+register_connection(alias=MONGO_ENGINE_ALIAS, host=MONGO_CONNECTION_URL)
+
+###################################################################################################
+# Variables validation
+###################################################################################################
+if not TOKEN:
+    raise ValueError("TOKEN is requires environment variable")
+
+if not MONGO_USER:
+    raise StartUpError("MONGO_USER is requires environment variable")
+
+if not MONGO_PASSWORD:
+    raise StartUpError("MONGO_PASSWORD is requires environment variable")
+
+if not MONGO_HOST:
+    raise StartUpError("MONGO_HOST is requires environment variable")
+
+if not MONGO_PORT:
+    raise StartUpError("MONGO_PORT is requires environment variable")
+
+if not MONGO_DB_NAME:
+    raise StartUpError("MONGO_DB_NAME is requires environment variable")
