@@ -1,7 +1,12 @@
 import os
+import base64
 import pathlib
 from json_log_formatter import JSONFormatter
 from mongoengine import register_connection
+from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from app.errors import StartUpError
 
 ###################################################################################################
@@ -82,6 +87,16 @@ LOGGING_CONFIG = {
 # Bot settings
 ###################################################################################################
 TOKEN = os.getenv('TOKEN', None)
+SECRET_KEY = os.getenv('SECRET_KEY', None)
+SALT = os.getenv('SALT', None)
+if not TOKEN:
+    raise StartUpError("TOKEN is requires environment variable")
+
+if not SECRET_KEY:
+    raise StartUpError("SECRET_KEY is requires environment variable")
+
+if not SALT:
+    raise StartUpError("SALT is requires environment variable")
 
 ###################################################################################################
 # NoSQL DB settings
@@ -93,14 +108,6 @@ MONGO_PORT = os.getenv('MONGO_PORT', None)
 MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', None)
 MONGO_CONNECTION_URL = f'mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB_NAME}'
 MONGO_ENGINE_ALIAS = 'core'
-register_connection(alias=MONGO_ENGINE_ALIAS, host=MONGO_CONNECTION_URL)
-
-###################################################################################################
-# Variables validation
-###################################################################################################
-if not TOKEN:
-    raise ValueError("TOKEN is requires environment variable")
-
 if not MONGO_USER:
     raise StartUpError("MONGO_USER is requires environment variable")
 
@@ -115,3 +122,21 @@ if not MONGO_PORT:
 
 if not MONGO_DB_NAME:
     raise StartUpError("MONGO_DB_NAME is requires environment variable")
+
+register_connection(alias=MONGO_ENGINE_ALIAS, host=MONGO_CONNECTION_URL)
+
+###################################################################################################
+# Cryptography settings
+###################################################################################################
+__password = SECRET_KEY.encode()
+__salt = SALT.encode()
+__kdf = PBKDF2HMAC(
+    algorithm=hashes.SHA256(),
+    length=32,
+    salt=__salt,
+    iterations=100000,
+    backend=default_backend()
+)
+__key = base64.urlsafe_b64encode(__kdf.derive(__password))
+
+CRYPTO = Fernet(__key)
