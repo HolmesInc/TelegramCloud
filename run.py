@@ -1,4 +1,4 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 from app import logger
 from app.config import TOKEN, ROOT_DIRECTORY
 from app.models import Directory
@@ -14,47 +14,52 @@ def set_up():
     else:
         Directory(name=ROOT_DIRECTORY).save()
 
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    return updater, dp
+
 
 def main():
     """Run bot."""
-    # Create the Updater and pass it your bot's token.
-    # Make sure to set use_context=True to use the new context based callbacks
-    # Post version 12 this will no longer be necessary
-    updater = Updater(TOKEN, use_context=True)
+    updater, dispatcher = set_up()
 
-    # Get the dispatcher to register handlers
-    dp = updater.dispatcher
-
-    # internal services set-up
-    set_up()
-    # on different commands - answer in Telegram
-    dp.add_handler(CommandHandler("start", BaseHandlers.start))
-    dp.add_handler(CommandHandler("help", BaseHandlers.help))
-    dp.add_handler(CommandHandler(
-        "create_directory",
+    ###########################################################################
+    # Commands
+    ###########################################################################
+    dispatcher.add_handler(CommandHandler("start", BaseHandlers.start))
+    dispatcher.add_handler(CommandHandler("help", BaseHandlers.help))
+    dispatcher.add_handler(CommandHandler(
+        "create",
         FileSystemHandlers.create_directory,
         pass_args=True,
         pass_job_queue=True,
         pass_chat_data=True
     ))
-    dp.add_handler(CommandHandler(
-        "current_directory",
+    dispatcher.add_handler(CommandHandler(
+        "current",
         FileSystemHandlers.current_directory,
         pass_job_queue=True,
         pass_chat_data=True
     ))
-    dp.add_handler(CommandHandler("show_photos", FileSystemHandlers.show_photos))
-    dp.add_handler(MessageHandler(Filters.photo, MediaHandlers.save_photo))
+    dispatcher.add_handler(CommandHandler("show", MediaHandlers.show_photo))
+    dispatcher.add_handler(CommandHandler("goto", FileSystemHandlers.go_to))
+    dispatcher.add_handler(CommandHandler("goback", FileSystemHandlers.go_back))
+    ###########################################################################
+    # Message handlers
+    ###########################################################################
+    dispatcher.add_handler(MessageHandler(Filters.photo, MediaHandlers.save_photo))
+    ###########################################################################
+    # Callback handlers
+    ###########################################################################
+    dispatcher.add_handler(CallbackQueryHandler(FileSystemHandlers.button))
+    ###########################################################################
+    # Error handlers
+    ###########################################################################
+    dispatcher.add_error_handler(BaseHandlers.error)
+    ###########################################################################
 
-    # log all errors
-    dp.add_error_handler(BaseHandlers.error)
-
-    # Start the Bot
     updater.start_polling()
-
-    # Block until you press Ctrl-C or the process receives SIGINT, SIGTERM or
-    # SIGABRT. This should be used most of the time, since start_polling() is
-    # non-blocking and will stop the bot gracefully.
     updater.idle()
 
 

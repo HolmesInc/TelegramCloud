@@ -2,6 +2,7 @@ from app import logger
 from app import models
 from app.config import ROOT_DIRECTORY
 from telegram.error import BadRequest
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 class PreProcessors:
@@ -15,8 +16,8 @@ class PreProcessors:
                     )
                 else:
                     update.message.reply_text(
-                        f'Unexpected amount of arguments. Command /create_directory requires {amount_of_args} '
-                        f'arguments to be passed'
+                        f'Unexpected amount of arguments. Create directory command "/create" requires {amount_of_args} '
+                        f'arguments to be passed. Please, use the following template: \n/create <Directory Name>'
                     )
             return apply
 
@@ -28,9 +29,7 @@ class PreProcessors:
         """
         def decorator(update, context, *args, **kwargs):
             current_directory = context.chat_data.get('current_directory')
-            if current_directory:
-                pass
-            else:
+            if not current_directory:
                 context.chat_data['current_directory'] = ROOT_DIRECTORY
             function(update, context, *args, **kwargs)
         return decorator
@@ -45,20 +44,17 @@ class BaseHandlers:
     @staticmethod
     def start(update, context):
         logger.info('New user joined')
-        # custom_keyboard = [['top-left', 'top-right'],
-        #                    ['bottom-left', 'bottom-right']]
-        # reply_markup = telegram.ReplyKeyboardMarkup(custom_keyboard)
-        # context.bot.send_message(chat_id=update.effective_chat.id,
-        #                  text="Custom Keyboard Test",
-        #                  reply_markup=reply_markup)
-        update.message.reply_text('Hi! Use /set <seconds> to set a timer')
+        update.message.reply_text('Welcome to Telegram Cloud bot. I will help you to store an manage your photos. '
+                                  'Now you are in a root directory. '
+                                  'You can upload your photos here, or create you on directories to '
+                                  'store your files im more manageable way')
 
     @staticmethod
     def help(update, context):
         logger.info('Incoming help request')
         update.message.reply_text('Commands description:')
-        update.message.reply_text('/create_directory <Directory Name> - Creates a new directory in the current one')
-        update.message.reply_text('/current_directory - Shows the name of current directory')
+        update.message.reply_text('/create <Directory Name> - Creates a new directory in the current one')
+        update.message.reply_text('/current - Shows the name of current directory')
         update.message.reply_text('Help is going to be implemented (or not :) )')
 
 
@@ -83,9 +79,11 @@ class FileSystemHandlers:
             new_directory.save()
             # add new directory as a sub directory to current_directory
             current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
-            current_directory.update(add_to_set__contains_directories=new_directory)  # , upsert=True
+            current_directory.update(add_to_set__contains_directories=new_directory)
             current_directory.save()
-            update.message.reply_text(f'The directory "{name}" is successfully created')
+            update.message.reply_text(
+                f'The directory "{name}" is successfully created and saved in {current_directory.name} directory'
+            )
 
     @staticmethod
     @PreProcessors.set_root_directory
@@ -97,23 +95,60 @@ class FileSystemHandlers:
 
     @staticmethod
     @PreProcessors.set_root_directory
-    def show_photos(update, context):
-        """ Send all photos from current directory
+    def go_to(update, context):
+        """ Create a buttons template. Buttons are names of subdirectories, that current directory contains.
+            By clicking on one of buttons user will be redirected to selected directory
         """
-        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
-        for photo in directory.contains_files:
-            try:
-                context.bot.forward_message(
-                    chat_id=update.effective_chat.id,
-                    from_chat_id=update.effective_chat.id,
-                    message_id=models.File.prepare_telegram_id(photo.telegram_id)
-                )
-            except BadRequest as bad_request:
-                no_message = 'Message to forward not found'
-                if str(bad_request) == no_message:
-                    continue
-                else:
-                    raise
+        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        if current_directory.contains_directories:
+            keyboard = [
+                [
+                    *map(
+                        lambda directory: InlineKeyboardButton(directory.name, callback_data=directory.name),
+                        current_directory.contains_directories
+                    )
+                ]
+            ]
+
+            update.message.reply_text(
+                'Choose the folder, that you want go to',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            update.message.reply_text(
+                f"There are no subdirectories in the directory {context.chat_data.get('current_directory')}"
+            )
+
+    @staticmethod
+    @PreProcessors.set_root_directory
+    def go_back(update, context):
+        """ Moving user back to parent directory of current directory
+        """
+        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        parent_directory = models.Directory.objects.get(contains_directories=current_directory)
+        if parent_directory:
+            context.chat_data['current_directory'] = parent_directory.name
+            update.message.reply_text(f"You now switched to directory {parent_directory.name}")
+
+        else:
+            if current_directory.name != ROOT_DIRECTORY:
+                context.chat_data['current_directory'] = parent_directory.name
+                logger.error(f"Unexpected accident: directory {current_directory.name} "
+                             f"doesn't have a parent directory. User were redirected to root directory")
+
+            update.message.reply_text(f"You now in the root directory")
+
+    @staticmethod
+    @PreProcessors.set_root_directory
+    def button(update, context):
+        """ A callback for go_to() method, that perform directory change to selected one
+        """
+        query = update.callback_query
+
+        directory_to_go = query.data
+        context.chat_data['current_directory'] = directory_to_go
+        query.answer()
+        query.edit_message_text(text=f"You now switched to directory {directory_to_go}")
 
 
 class MediaHandlers:
@@ -130,3 +165,26 @@ class MediaHandlers:
         directory.update(add_to_set__contains_files=photo)
         directory.save()
         update.message.reply_text('Your file is saved')
+
+    @staticmethod
+    @PreProcessors.set_root_directory
+    def show_photo(update, context):
+        """ Send all photos from current directory
+        """
+        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        if not directory.contains_files:
+            update.message.reply_text('There are no photos stored in current directory')
+        else:
+            for photo in directory.contains_files:
+                try:
+                    context.bot.forward_message(
+                        chat_id=update.effective_chat.id,
+                        from_chat_id=update.effective_chat.id,
+                        message_id=models.File.prepare_telegram_id(photo.telegram_id)
+                    )
+                except BadRequest as bad_request:
+                    no_message = 'Message to forward not found'
+                    if str(bad_request) == no_message:
+                        continue
+                    else:
+                        raise
