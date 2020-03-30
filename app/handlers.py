@@ -126,17 +126,24 @@ class FileSystemHandlers:
         """
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         parent_directory = models.Directory.objects.get(contains_directories=current_directory)
-        if parent_directory:
+
+        def __handle_successfully_switched():
             context.chat_data['current_directory'] = parent_directory.name
             update.message.reply_text(f"You now switched to directory {parent_directory.name}")
 
-        else:
+        def __handle_dir_with_no_parents():
             if current_directory.name != ROOT_DIRECTORY:
-                context.chat_data['current_directory'] = parent_directory.name
+                context.chat_data['current_directory'] = ROOT_DIRECTORY
                 logger.error(f"Unexpected accident: directory {current_directory.name} "
                              f"doesn't have a parent directory. User were redirected to root directory")
 
             update.message.reply_text(f"You now in the root directory")
+
+        if parent_directory:
+            __handle_successfully_switched()
+
+        else:
+            __handle_dir_with_no_parents()
 
     @staticmethod
     @PreProcessors.set_root_directory
@@ -146,9 +153,35 @@ class FileSystemHandlers:
         query = update.callback_query
 
         directory_to_go = query.data
-        context.chat_data['current_directory'] = directory_to_go
-        query.answer()
-        query.edit_message_text(text=f"You now switched to directory {directory_to_go}")
+        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+
+        def __handle_directory_is_not_subdirectory():
+            context.chat_data['current_directory'] = ROOT_DIRECTORY
+            logger.error(f"Unexpected accident: directory {directory_to_go} from callback buttons"
+                         f"is not a subdirectory of {current_directory.name}. "
+                         f"User were redirected to root directory")
+
+            query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
+
+        def __handle_directory_does_not_exists():
+            context.chat_data['current_directory'] = ROOT_DIRECTORY
+            logger.error(f"Unexpected accident: directory {directory_to_go} from callback buttons"
+                         f"doesn't exist. User were redirected to root directory")
+
+            query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
+
+        def __handle_successfully_switched():
+            context.chat_data['current_directory'] = directory_to_go
+            query.answer()
+            query.edit_message_text(text=f"You now switched to directory {directory_to_go}")
+
+        if models.Directory.exists(directory_to_go):
+            if current_directory.has_subdirectory(directory_to_go):
+                __handle_successfully_switched()
+            else:
+                __handle_directory_is_not_subdirectory()
+        else:
+            __handle_directory_does_not_exists()
 
 
 class MediaHandlers:
@@ -164,7 +197,7 @@ class MediaHandlers:
         directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         directory.update(add_to_set__contains_files=photo)
         directory.save()
-        update.message.reply_text('Your file is saved')
+        update.message.reply_text(f'Your file now live in directory {directory.name}')
 
     @staticmethod
     @PreProcessors.set_root_directory

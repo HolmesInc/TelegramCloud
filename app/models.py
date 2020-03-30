@@ -151,3 +151,19 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
 
     def __str__(self):
         return f'Directory name: {self.name}'
+
+    def has_subdirectory(self, name: str) -> bool:
+        """ Check that Directory with name "name" is subdirectory of current directory
+
+        :param name: instance of possible subdirectory
+        :return: True is "name" is subdirectory, otherwise False
+        """
+        testing_subdirectory = Directory.objects.get(name=name)
+        return testing_subdirectory in self.contains_directories
+
+    @classmethod
+    def exists(cls, name: str) -> bool:
+        if cls.objects.get(name=name):
+            return True
+
+        return False
