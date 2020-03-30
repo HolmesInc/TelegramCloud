@@ -3,6 +3,7 @@ from app import models
 from app.config import ROOT_DIRECTORY
 from telegram.error import BadRequest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from functools import reduce
 
 
 class PreProcessors:
@@ -16,8 +17,8 @@ class PreProcessors:
                     )
                 else:
                     update.message.reply_text(
-                        f'Unexpected amount of arguments. Create directory command "/create" requires {amount_of_args} '
-                        f'arguments to be passed. Please, use the following template: \n/create <Directory Name>'
+                        f'Unexpected amount of arguments.\nCommand "{update.message.text}" requires {amount_of_args} '
+                        f'arguments to be passed.\nCheck "/help" command if you have any issues'
                     )
             return apply
 
@@ -71,8 +72,8 @@ class FileSystemHandlers:
         """
         name = name[0]
         # check if directory exists
-        if models.Directory.objects.get(name=name):
-            update.message.reply_text(f'The directory "{name}" already exists')
+        if models.Directory.exists(name):
+            update.message.reply_text(f"The directory '{name}' already exists")
         else:
             # create new directory
             new_directory = models.Directory(name=name)
@@ -82,7 +83,54 @@ class FileSystemHandlers:
             current_directory.update(add_to_set__contains_directories=new_directory)
             current_directory.save()
             update.message.reply_text(
-                f'The directory "{name}" is successfully created and saved in {current_directory.name} directory'
+                f"The directory '{name}' is successfully created and saved in {current_directory.name} directory"
+            )
+
+    @staticmethod
+    @PreProcessors.validate_args(1)
+    @PreProcessors.set_root_directory
+    def remove_directory(update, context, name):
+        """Remove subdirectory "name" from current directory
+
+        :param update: Telegram chat data
+        :param context: Telegram chat data
+        :param name: name of a directory to be deleted
+        """
+        name = name[0]
+        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        # check if directory exists
+        if current_directory.has_subdirectory(name):
+            current_directory.update(pull__contains_directories=models.Directory.objects.get(name=name))
+            current_directory.save()
+            update.message.reply_text(
+                f"The directory '{name}' is successfully deleted from current {current_directory.name} directory"
+            )
+        else:
+            update.message.reply_text(f"The directory '{name}' already deleted")
+
+    @staticmethod
+    @PreProcessors.set_root_directory
+    def show_subdirectories(update, context):
+        """ Show subdirectories of current directory
+
+        :param update: Telegram chat data
+        :param context: Telegram chat data
+        """
+        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        if current_directory.contains_directories:
+            subdirectories = reduce(
+                lambda res, directory: f"{res} {directory.name}",
+                current_directory.contains_directories,
+                ""
+            )
+
+            update.message.reply_text(
+                f"Current directory {context.chat_data.get('current_directory')} "
+                f"contains the following subdirectories: {subdirectories}"
+            )
+        else:
+            update.message.reply_text(
+                f"There are no subdirectories in the directory {context.chat_data.get('current_directory')}"
             )
 
     @staticmethod

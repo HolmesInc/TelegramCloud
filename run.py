@@ -21,7 +21,8 @@ def set_up():
 
 
 def main():
-    """Run bot."""
+    """ Main function that runs bot
+    """
     updater, dispatcher = set_up()
 
     ###########################################################################
@@ -37,10 +38,19 @@ def main():
         pass_chat_data=True
     ))
     dispatcher.add_handler(CommandHandler(
+        "remove",
+        FileSystemHandlers.remove_directory,
+        pass_args=True
+    ))
+    dispatcher.add_handler(CommandHandler(
         "current",
         FileSystemHandlers.current_directory,
         pass_job_queue=True,
         pass_chat_data=True
+    ))
+    dispatcher.add_handler(CommandHandler(
+        "subdirs",
+        FileSystemHandlers.show_subdirectories
     ))
     dispatcher.add_handler(CommandHandler("show", MediaHandlers.show_photo))
     dispatcher.add_handler(CommandHandler("goto", FileSystemHandlers.go_to))
