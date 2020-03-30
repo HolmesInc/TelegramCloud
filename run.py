@@ -1,7 +1,18 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from app import logger
+from app.config import TOKEN, ROOT_DIRECTORY
+from app.models import Directory
 from app.handlers import BaseHandlers, FileSystemHandlers, MediaHandlers
-from app.config import TOKEN
+
+
+def set_up():
+    """ Setting up bot internal services during start up
+    """
+    root_directory = Directory.objects.get(name=ROOT_DIRECTORY)
+    if root_directory:
+        pass
+    else:
+        Directory(name=ROOT_DIRECTORY).save()
 
 
 def main():
@@ -14,16 +25,26 @@ def main():
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
 
+    # internal services set-up
+    set_up()
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", BaseHandlers.start))
     dp.add_handler(CommandHandler("help", BaseHandlers.help))
-    dp.add_handler(CommandHandler("create_directory",
-                                  FileSystemHandlers.create_directory,
-                                  pass_args=True,
-                                  pass_job_queue=True,
-                                  pass_chat_data=True))
+    dp.add_handler(CommandHandler(
+        "create_directory",
+        FileSystemHandlers.create_directory,
+        pass_args=True,
+        pass_job_queue=True,
+        pass_chat_data=True
+    ))
+    dp.add_handler(CommandHandler(
+        "current_directory",
+        FileSystemHandlers.current_directory,
+        pass_job_queue=True,
+        pass_chat_data=True
+    ))
     dp.add_handler(CommandHandler("show_photos", FileSystemHandlers.show_photos))
-    dp.add_handler(MessageHandler(Filters.photo, MediaHandlers.document))
+    dp.add_handler(MessageHandler(Filters.photo, MediaHandlers.save_photo))
 
     # log all errors
     dp.add_error_handler(BaseHandlers.error)

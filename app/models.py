@@ -140,6 +140,7 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
     """
     name = StringField(required=True, null=False, unique=True)
 
+    contains_directories = ListField(ReferenceField("self"))
     contains_files = ListField(ReferenceField(File))
 
     meta = {
@@ -147,3 +148,6 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
         "collections": "filesystem",
         "queryset_class": CustomQuerySet
     }
+
+    def __str__(self):
+        return f'Directory name: {self.name}'

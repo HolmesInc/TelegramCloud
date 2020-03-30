@@ -87,6 +87,7 @@ LOGGING_CONFIG = {
 # Bot settings
 ###################################################################################################
 TOKEN = os.getenv('TOKEN', None)
+ROOT_DIRECTORY = os.getenv('ROOT_DIRECTORY', 'ROOT')
 SECRET_KEY = os.getenv('SECRET_KEY', None)
 SALT = os.getenv('SALT', None)
 if not TOKEN:

@@ -1,5 +1,6 @@
 from app import logger
 from app import models
+from app.config import ROOT_DIRECTORY
 from telegram.error import BadRequest
 
 
@@ -14,11 +15,24 @@ class PreProcessors:
                     )
                 else:
                     update.message.reply_text(
-                        f'Unexpected amount of arguments. Command /{function.__name__} requires {amount_of_args} '
+                        f'Unexpected amount of arguments. Command /create_directory requires {amount_of_args} '
                         f'arguments to be passed'
                     )
             return apply
 
+        return decorator
+
+    @staticmethod
+    def set_root_directory(function):
+        """ Set up ROOT_DIRECTORY, if chat_data doesn't contain one
+        """
+        def decorator(update, context, *args, **kwargs):
+            current_directory = context.chat_data.get('current_directory')
+            if current_directory:
+                pass
+            else:
+                context.chat_data['current_directory'] = ROOT_DIRECTORY
+            function(update, context, *args, **kwargs)
         return decorator
 
 
@@ -51,19 +65,42 @@ class BaseHandlers:
 class FileSystemHandlers:
     @staticmethod
     @PreProcessors.validate_args(1)
+    @PreProcessors.set_root_directory
     def create_directory(update, context, name):
+        """ Create new directory in the current one
+
+        :param update: Telegram chat data
+        :param context: Telegram chat data
+        :param name: name of a directory to be created
+        """
         name = name[0]
-        directory = models.Directory(name=name)
-        directory.save()
-        update.message.reply_text(f'The directory "{name}" is successfully created')
+        # check if directory exists
+        if models.Directory.objects.get(name=name):
+            update.message.reply_text(f'The directory "{name}" already exists')
+        else:
+            # create new directory
+            new_directory = models.Directory(name=name)
+            new_directory.save()
+            # add new directory as a sub directory to current_directory
+            current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+            current_directory.update(add_to_set__contains_directories=new_directory)  # , upsert=True
+            current_directory.save()
+            update.message.reply_text(f'The directory "{name}" is successfully created')
 
     @staticmethod
+    @PreProcessors.set_root_directory
     def current_directory(update, context):
-        update.message.reply_text('To be implemented)')
+        """ Send current directory, that user located in now
+        """
+        current_directory = context.chat_data.get('current_directory')
+        update.message.reply_text(f"Current directory is {current_directory}")
 
     @staticmethod
+    @PreProcessors.set_root_directory
     def show_photos(update, context):
-        directory = models.Directory.objects.first()  # ADD SELECTION OF DIRECTORY
+        """ Send all photos from current directory
+        """
+        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         for photo in directory.contains_files:
             try:
                 context.bot.forward_message(
@@ -81,10 +118,15 @@ class FileSystemHandlers:
 
 class MediaHandlers:
     @staticmethod
-    def document(update, context):
+    @PreProcessors.set_root_directory
+    def save_photo(update, context):
+        """ Add given photo to current directory
+        """
+        # create new record about the file in the DB
         photo = models.File(telegram_id=update.message.message_id)
         photo.save()
-        directory = models.Directory.objects.first()  # ADD SELECTION OF DIRECTORY
-        directory.contains_files.append(photo)
+        # attach new file to current directory
+        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        directory.update(add_to_set__contains_files=photo)
         directory.save()
-        update.message.reply_text('Saved')
+        update.message.reply_text('Your file is saved')
