@@ -59,7 +59,7 @@ LOGGING_CONFIG = {
             'datefmt': '%Y-%m-%d %H:%M:%S'
         },
         'custom': {
-            '()': 'config.CustomisedJSONFormatter',
+            '()': 'app.config.CustomisedJSONFormatter',
         }
     },
     'handlers': {

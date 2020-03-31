@@ -12,6 +12,17 @@ version: '2'
 
 services:
 
+  telegram_cloud_backend:
+    container_name: "telegram_cloud_backend"
+    env_file:
+      - ./environment/development.env
+    image: holmesinc/telegram-cloud:latest
+    restart: always
+    depends_on:
+      - telegram_cloud_mongodb
+    links:
+      - telegram_cloud_mongodb
+
   telegram_cloud_mongodb:
     image: mongo:4.2
     container_name: "telegram_cloud_mongodb"

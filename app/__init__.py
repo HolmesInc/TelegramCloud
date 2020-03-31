@@ -1,6 +1,6 @@
 from logging import getLogger
 from logging.config import dictConfig
-from config import LOGGING_CONFIG
+from . import config
 
-dictConfig(LOGGING_CONFIG)
+dictConfig(config.LOGGING_CONFIG)
 logger = getLogger('telegram_cloud')
