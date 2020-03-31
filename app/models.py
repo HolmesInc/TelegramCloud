@@ -2,7 +2,7 @@ import json
 from collections import deque
 from datetime import datetime
 from mongoengine import (Document, StringField, DateTimeField, ReferenceField, ListField, QuerySet, BinaryField,
-                         signals, NULLIFY, CASCADE)
+                         signals, NULLIFY, CASCADE, PULL)
 from mongoengine.errors import DoesNotExist
 from app.config import MONGO_ENGINE_ALIAS, CRYPTO
 
@@ -140,8 +140,8 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
     """
     name = StringField(required=True, null=False, unique=True)
 
-    contains_directories = ListField(ReferenceField("self", reverse_delete_rule=NULLIFY))
-    contains_files = ListField(ReferenceField(File, reverse_delete_rule=NULLIFY))
+    contains_directories = ListField(ReferenceField("self", reverse_delete_rule=PULL))
+    contains_files = ListField(ReferenceField(File, reverse_delete_rule=PULL))
 
     meta = {
         "db_alias": MONGO_ENGINE_ALIAS,
@@ -163,13 +163,16 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
         super().delete(signal_kwargs, **write_concern)
 
     def has_subdirectory(self, name: str) -> bool:
-        """ Check that Directory with name "name" is subdirectory of current directory
+        """ Check that Directory with name <name> exists and is subdirectory of current directory
 
         :param name: instance of possible subdirectory
-        :return: True is "name" is subdirectory, otherwise False
+        :return: True if <name> is subdirectory, otherwise False
         """
-        testing_subdirectory = Directory.objects.get(name=name)
-        return testing_subdirectory in self.contains_directories
+        if Directory.exists(name):
+            testing_subdirectory = Directory.objects.get(name=name)
+            return testing_subdirectory in self.contains_directories
+        else:
+            return False
 
     @classmethod
     def exists(cls, name: str) -> bool:

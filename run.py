@@ -38,7 +38,7 @@ def main():
         pass_chat_data=True
     ))
     dispatcher.add_handler(CommandHandler(
-        "remove",
+        "delete",
         FileSystemHandlers.remove_directory,
         pass_args=True
     ))
@@ -49,12 +49,12 @@ def main():
         pass_chat_data=True
     ))
     dispatcher.add_handler(CommandHandler(
-        "subdirs",
+        "dirs",
         FileSystemHandlers.show_subdirectories
     ))
     dispatcher.add_handler(CommandHandler("show", MediaHandlers.show_photo))
-    dispatcher.add_handler(CommandHandler("goto", FileSystemHandlers.go_to))
-    dispatcher.add_handler(CommandHandler("goback", FileSystemHandlers.go_back))
+    dispatcher.add_handler(CommandHandler("goto", FileSystemHandlers.go_to_directory))
+    dispatcher.add_handler(CommandHandler("back", FileSystemHandlers.return_to_parent_directory))
     ###########################################################################
     # Message handlers
     ###########################################################################
@@ -62,7 +62,7 @@ def main():
     ###########################################################################
     # Callback handlers
     ###########################################################################
-    dispatcher.add_handler(CallbackQueryHandler(FileSystemHandlers.button))
+    dispatcher.add_handler(CallbackQueryHandler(FileSystemHandlers.process_keyboard))
     ###########################################################################
     # Error handlers
     ###########################################################################

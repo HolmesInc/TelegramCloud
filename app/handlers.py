@@ -1,6 +1,6 @@
 from app import logger
 from app import models
-from app.config import ROOT_DIRECTORY, CANCEL_BUTTON
+from app.config import ROOT_DIRECTORY, CANCEL_BUTTON, DIRECTORY_ACTIONS
 from telegram.error import BadRequest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import reduce
@@ -61,6 +61,35 @@ class BaseHandlers:
 
 class FileSystemHandlers:
     @staticmethod
+    def __create_subdirectories_keyboard(current_directory: object, action: str) -> list:
+        """ NOTE: this method assumes, that <current_directory> contains subdirectories and there is no
+            need for additional validation
+
+        :param current_directory: Directory instance
+        :param action: type of action, that should be performed over directory
+        :return: list with directories
+        """
+        def __reducer(result: list, directory: object):
+            """ Divides array of subdirectories, stored at directory.contains_directories to list of two
+                items lists to have well readable inline keyboard
+            Example: [Dir1, Dir2, Dir3, Dir4, Dir5] -> __reducer() -> [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
+
+            :param result: list of two items lists
+            :param directory: Directory instance
+            :return: [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
+            """
+            if len(result[-1]) == 2:
+                result.append([])
+            result[-1].append(InlineKeyboardButton(directory.name, callback_data=f"{action},{directory.name}"))
+
+            return result
+
+        keyboard = reduce(__reducer, current_directory.contains_directories, [[]])
+        keyboard.append([InlineKeyboardButton(CANCEL_BUTTON, callback_data=f"{action},{CANCEL_BUTTON}")])
+
+        return keyboard
+
+    @staticmethod
     @PreProcessors.validate_args(1)
     @PreProcessors.set_root_directory
     def create_directory(update, context, name):
@@ -87,28 +116,29 @@ class FileSystemHandlers:
             )
 
     @staticmethod
-    @PreProcessors.validate_args(1)
     @PreProcessors.set_root_directory
-    def remove_directory(update, context, name):
-        """ Remove subdirectory "name" and all it's subdirectories and files
+    def remove_directory(update, context):
+        """ Remove selected subdirectory
 
         :param update: Telegram chat data
         :param context: Telegram chat data
-        :param name: name of a directory to be deleted
         """
-        name = name[0]
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
-        # check if directory exists
-        if current_directory.has_subdirectory(name):
-            subdirectory = models.Directory.objects.get(name=name)
-            subdirectory.delete()
+
+        if current_directory.contains_directories:
+
+            keyboard = FileSystemHandlers.__create_subdirectories_keyboard(
+                current_directory, DIRECTORY_ACTIONS['delete']
+            )
 
             update.message.reply_text(
-                f"The directory '{name}' and it's files are successfully deleted from current "
-                f"{current_directory.name} directory"
+                'Choose the folder, that you want to delete',
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            update.message.reply_text(f"The directory '{name}' is already deleted")
+            update.message.reply_text(
+                f"There are no subdirectories in the directory {context.chat_data.get('current_directory')}"
+            )
 
     @staticmethod
     @PreProcessors.set_root_directory
@@ -145,30 +175,16 @@ class FileSystemHandlers:
 
     @staticmethod
     @PreProcessors.set_root_directory
-    def go_to(update, context):
+    def go_to_directory(update, context):
         """ Create a buttons template. Buttons are names of subdirectories, that current directory contains.
             By clicking on one of buttons user will be redirected to selected directory
         """
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         if current_directory.contains_directories:
 
-            def __reducer(result: list, directory: object):
-                """ Divides array of subdirectories, stored at directory.contains_directories to list of two
-                    items lists to have well readable inline keyboard
-                Example: [Dir1, Dir2, Dir3, Dir4, Dir5] -> __reducer() -> [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
-
-                :param result: list of two items lists
-                :param directory: Directory instance
-                :return: [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
-                """
-                if len(result[-1]) == 2:
-                    result.append([])
-                result[-1].append(InlineKeyboardButton(directory.name, callback_data=directory.name))
-
-                return result
-
-            keyboard = reduce(__reducer, current_directory.contains_directories, [[]])
-            keyboard.append([InlineKeyboardButton(CANCEL_BUTTON, callback_data=CANCEL_BUTTON)])
+            keyboard = FileSystemHandlers.__create_subdirectories_keyboard(
+                current_directory, DIRECTORY_ACTIONS['goto']
+            )
 
             update.message.reply_text(
                 'Choose the folder, that you want go to',
@@ -181,7 +197,7 @@ class FileSystemHandlers:
 
     @staticmethod
     @PreProcessors.set_root_directory
-    def go_back(update, context):
+    def return_to_parent_directory(update, context):
         """ Moving user back to parent directory of current directory
         """
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
@@ -207,46 +223,50 @@ class FileSystemHandlers:
 
     @staticmethod
     @PreProcessors.set_root_directory
-    def button(update, context):
-        """ A callback for go_to() method, that perform directory change to selected one
+    def process_keyboard(update, context):
+        """ A callback for go_to_directory() and remove_directory() methods, that perform directory change to
+            selected one
         """
         query = update.callback_query
-
-        directory_to_go = query.data
+        action, directory = query.data.split(',')
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
 
-        def __handle_directory_is_not_subdirectory():
-            context.chat_data['current_directory'] = ROOT_DIRECTORY
-            logger.error(f"Unexpected accident: directory {directory_to_go} from callback buttons"
-                         f"is not a subdirectory of {current_directory.name}. "
-                         f"User were redirected to root directory")
+        def _goto_handler(directory_name):
+            if current_directory.has_subdirectory(directory_name):
+                context.chat_data['current_directory'] = directory_name
+                query.answer()
+                query.edit_message_text(text=f"You now switched to directory {directory_name}")
 
-            query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
-
-        def __handle_directory_does_not_exists():
-            context.chat_data['current_directory'] = ROOT_DIRECTORY
-            logger.error(f"Unexpected accident: directory {directory_to_go} from callback buttons"
-                         f"doesn't exist. User were redirected to root directory")
-
-            query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
-
-        def __handle_successfully_switched():
-            context.chat_data['current_directory'] = directory_to_go
-            query.answer()
-            query.edit_message_text(text=f"You now switched to directory {directory_to_go}")
-
-        def __handle_cancel():
-            query.edit_message_text(text=f"Operation were canceled")
-
-        if directory_to_go == CANCEL_BUTTON:
-            __handle_cancel()
-        elif models.Directory.exists(directory_to_go):
-            if current_directory.has_subdirectory(directory_to_go):
-                __handle_successfully_switched()
             else:
-                __handle_directory_is_not_subdirectory()
+                context.chat_data['current_directory'] = ROOT_DIRECTORY
+                logger.error(f"Unexpected accident: <directory.has_subdirectory> returned False for directory "
+                             f"{directory_name}. current_directory={current_directory}, action={action}, "
+                             f"directory={directory_name}. User were redirected to root directory")
+
+                query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
+
+        def _delete_handler(directory_name):
+            if current_directory.has_subdirectory(directory_name):
+                subdirectory = models.Directory.objects.get(name=directory_name)
+                subdirectory.delete()
+
+                query.edit_message_text(
+                    f"The directory '{directory_name}' and it's files are successfully deleted from current "
+                    f"{current_directory.name} directory"
+                )
+            else:
+                query.edit_message_text(f"Seems, the directory '{directory_name}' is already deleted")
+
+        if directory == CANCEL_BUTTON:
+            query.edit_message_text(text=f"Operation were canceled")
         else:
-            __handle_directory_does_not_exists()
+            action_map = {
+                DIRECTORY_ACTIONS['goto']: _goto_handler,
+                DIRECTORY_ACTIONS['delete']: _delete_handler,
+            }
+
+            handler = action_map[action]
+            handler(directory)
 
 
 class MediaHandlers:
