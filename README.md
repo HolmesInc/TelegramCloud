@@ -120,3 +120,32 @@ statistic = Statistic.objects(is_successful=True)
 ```
 statistic = Statistic.objects.first()
 ```
+
+## Docker
+
+#### Update image 
+1) Build an image
+ ```
+ docker build -t holmesinc/telegram-cloud:latest . 
+ ```
+2) Push the image
+ ```
+ docker push holmesinc/telegram-cloud:latest
+ ```
+#### Update service
+1) Stop running containers
+```
+sudo docker-compose stop
+```
+2) Pull new image
+```
+sudo docker pull holmesinc/telegram-cloud:latest
+```
+3) Run service in background mode
+```
+sudo docker-compose up -d
+```
+4) Check that containers are run
+```
+sudo docker ps
+```
