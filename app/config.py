@@ -90,6 +90,7 @@ TOKEN = os.getenv('TOKEN', None)
 ROOT_DIRECTORY = os.getenv('ROOT_DIRECTORY', 'ROOT')
 SECRET_KEY = os.getenv('SECRET_KEY', None)
 SALT = os.getenv('SALT', None)
+CANCEL_BUTTON = 'Cancel'
 if not TOKEN:
     raise StartUpError("TOKEN is requires environment variable")
 

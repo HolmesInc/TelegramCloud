@@ -1,6 +1,6 @@
 from app import logger
 from app import models
-from app.config import ROOT_DIRECTORY
+from app.config import ROOT_DIRECTORY, CANCEL_BUTTON
 from telegram.error import BadRequest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import reduce
@@ -151,14 +151,24 @@ class FileSystemHandlers:
         """
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         if current_directory.contains_directories:
-            keyboard = [
-                [
-                    *map(
-                        lambda directory: InlineKeyboardButton(directory.name, callback_data=directory.name),
-                        current_directory.contains_directories
-                    )
-                ]
-            ]
+
+            def __reducer(result: list, directory: object):
+                """ Divides array of subdirectories, stored at directory.contains_directories to list of two
+                    items lists to have well readable inline keyboard
+                Example: [Dir1, Dir2, Dir3, Dir4, Dir5] -> __reducer() -> [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
+
+                :param result: list of two items lists
+                :param directory: Directory instance
+                :return: [[Dir1, Dir2], [Dir3, Dir4], [Dir5]]
+                """
+                if len(result[-1]) == 2:
+                    result.append([])
+                result[-1].append(InlineKeyboardButton(directory.name, callback_data=directory.name))
+
+                return result
+
+            keyboard = reduce(__reducer, current_directory.contains_directories, [[]])
+            keyboard.append([InlineKeyboardButton(CANCEL_BUTTON, callback_data=CANCEL_BUTTON)])
 
             update.message.reply_text(
                 'Choose the folder, that you want go to',
@@ -225,7 +235,12 @@ class FileSystemHandlers:
             query.answer()
             query.edit_message_text(text=f"You now switched to directory {directory_to_go}")
 
-        if models.Directory.exists(directory_to_go):
+        def __handle_cancel():
+            query.edit_message_text(text=f"Operation were canceled")
+
+        if directory_to_go == CANCEL_BUTTON:
+            __handle_cancel()
+        elif models.Directory.exists(directory_to_go):
             if current_directory.has_subdirectory(directory_to_go):
                 __handle_successfully_switched()
             else:
