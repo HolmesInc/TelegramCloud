@@ -90,7 +90,7 @@ class FileSystemHandlers:
     @PreProcessors.validate_args(1)
     @PreProcessors.set_root_directory
     def remove_directory(update, context, name):
-        """Remove subdirectory "name" from current directory
+        """ Remove subdirectory "name" and all it's subdirectories and files
 
         :param update: Telegram chat data
         :param context: Telegram chat data
@@ -100,13 +100,15 @@ class FileSystemHandlers:
         current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
         # check if directory exists
         if current_directory.has_subdirectory(name):
-            current_directory.update(pull__contains_directories=models.Directory.objects.get(name=name))
-            current_directory.save()
+            subdirectory = models.Directory.objects.get(name=name)
+            subdirectory.delete()
+
             update.message.reply_text(
-                f"The directory '{name}' is successfully deleted from current {current_directory.name} directory"
+                f"The directory '{name}' and it's files are successfully deleted from current "
+                f"{current_directory.name} directory"
             )
         else:
-            update.message.reply_text(f"The directory '{name}' already deleted")
+            update.message.reply_text(f"The directory '{name}' is already deleted")
 
     @staticmethod
     @PreProcessors.set_root_directory

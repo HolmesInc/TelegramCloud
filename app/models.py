@@ -2,7 +2,7 @@ import json
 from collections import deque
 from datetime import datetime
 from mongoengine import (Document, StringField, DateTimeField, ReferenceField, ListField, QuerySet, BinaryField,
-                         signals)
+                         signals, NULLIFY, CASCADE)
 from mongoengine.errors import DoesNotExist
 from app.config import MONGO_ENGINE_ALIAS, CRYPTO
 
@@ -140,8 +140,8 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
     """
     name = StringField(required=True, null=False, unique=True)
 
-    contains_directories = ListField(ReferenceField("self"))
-    contains_files = ListField(ReferenceField(File))
+    contains_directories = ListField(ReferenceField("self", reverse_delete_rule=NULLIFY))
+    contains_files = ListField(ReferenceField(File, reverse_delete_rule=NULLIFY))
 
     meta = {
         "db_alias": MONGO_ENGINE_ALIAS,
@@ -151,6 +151,16 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
 
     def __str__(self):
         return f'Directory name: {self.name}'
+
+    def delete(self, signal_kwargs=None, **write_concern):
+        def __delete_children(children):
+            deque(
+                map(lambda instance: instance.delete(), children)
+            )
+
+        __delete_children(self.contains_directories)
+        __delete_children(self.contains_files)
+        super().delete(signal_kwargs, **write_concern)
 
     def has_subdirectory(self, name: str) -> bool:
         """ Check that Directory with name "name" is subdirectory of current directory
