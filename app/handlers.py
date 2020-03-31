@@ -53,10 +53,17 @@ class BaseHandlers:
     @staticmethod
     def help(update, context):
         logger.info('Incoming help request')
-        update.message.reply_text('Commands description:')
-        update.message.reply_text('/create <Directory Name> - Creates a new directory in the current one')
-        update.message.reply_text('/current - Shows the name of current directory')
-        update.message.reply_text('Help is going to be implemented (or not :) )')
+        update.message.reply_text(
+            'Commands description:\n'
+            '/create <Directory Name> - Creates a new directory in the current one. '
+            'Directory name should be without whitespaces;\n'
+            '/delete - Display list of subdirectories, located in the current directory, to delete one;\n'
+            '/current - Display the name of current directory;\n'
+            '/dirs - Display subdirectories of the current directory;\n'
+            '/goto - Display list of subdirectories, located in the current directory, to be redirected to;\n'
+            '/back - Redirect user to parent directory of the current one;\n'
+            '/show - Display files, stored in the current directory.'
+        )
 
 
 class FileSystemHandlers:

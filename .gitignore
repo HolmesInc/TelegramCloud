@@ -211,3 +211,5 @@ fabric.properties
 environment/*.env
 
 *.pem
+
+.DS_Store

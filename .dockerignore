@@ -214,5 +214,7 @@ bash_scripts/
 logs/
 environment/*.env
 
+.DS_Store
+
 
 
