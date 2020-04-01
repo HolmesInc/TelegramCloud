@@ -20,6 +20,7 @@ $ docker-compose up`
 ```
 $ docker exec -it mongodb-guide /bin/bash
 /# mongo
+> show dbs
 > use mongodb_guide_database
 > db.createUser({
         user: "db_user_name",
