@@ -1,19 +1,12 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 from app import logger
-from app.config import TOKEN, ROOT_DIRECTORY
-from app.models import Directory
+from app.config import TOKEN
 from app.handlers import BaseHandlers, FileSystemHandlers, MediaHandlers
 
 
 def set_up():
     """ Setting up bot internal services during start up
     """
-    root_directory = Directory.objects.get(name=ROOT_DIRECTORY)
-    if root_directory:
-        pass
-    else:
-        Directory(name=ROOT_DIRECTORY).save()
-
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 

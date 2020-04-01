@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-docker-compose up
+docker telegram_cloud_mongodb

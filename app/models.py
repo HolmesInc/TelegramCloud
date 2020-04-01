@@ -1,4 +1,5 @@
 import json
+import base64
 from collections import deque
 from datetime import datetime
 from mongoengine import (Document, StringField, DateTimeField, ReferenceField, ListField, QuerySet, BinaryField,
@@ -138,7 +139,8 @@ class File(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document):
 class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document):
     """ Representation of directory entity, that stores file ids
     """
-    name = StringField(required=True, null=False, unique=True)
+    name = StringField(required=True, null=False)
+    user_id = BinaryField(required=True, null=False)
 
     contains_directories = ListField(ReferenceField("self", reverse_delete_rule=PULL))
     contains_files = ListField(ReferenceField(File, reverse_delete_rule=PULL))
@@ -146,11 +148,38 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
     meta = {
         "db_alias": MONGO_ENGINE_ALIAS,
         "collections": "filesystem",
-        "queryset_class": CustomQuerySet
+        "queryset_class": CustomQuerySet,
+        "indexes": [
+            {"fields": ('name', 'user_id'), 'unique': True}
+        ]
     }
 
     def __str__(self):
         return f'Directory name: {self.name}'
+
+    def clean(self):
+        """ Encrypt telegram_id field before saving
+        """
+        if type(self.user_id) == int:
+            self.user_id = Directory.encrypt_user_id(self.user_id)
+
+    @staticmethod
+    def encrypt_user_id(user_id: int) -> bytes:
+        """ Encrypt user ID
+
+        :param user_id: id to encrypt
+        :return: encrypted user id
+        """
+        return base64.b64encode(str(user_id).encode())
+
+    @staticmethod
+    def decrypt_user_id(user_id: bytes) -> int:
+        """ Convert encrypted string to user id
+
+        :param user_id: id to decrypt
+        :return: decrypted user id
+        """
+        return int(base64.b64decode(user_id).decode())
 
     def delete(self, signal_kwargs=None, **write_concern):
         def __delete_children(children):
@@ -162,21 +191,22 @@ class Directory(BaseFieldsMixin, AdditionalOperationsMixin, QueryMixin, Document
         __delete_children(self.contains_files)
         super().delete(signal_kwargs, **write_concern)
 
-    def has_subdirectory(self, name: str) -> bool:
+    def has_subdirectory(self, name: str, encrypted_user_id: bytes) -> bool:
         """ Check that Directory with name <name> exists and is subdirectory of current directory
 
         :param name: instance of possible subdirectory
+        :param encrypted_user_id:
         :return: True if <name> is subdirectory, otherwise False
         """
-        if Directory.exists(name):
-            testing_subdirectory = Directory.objects.get(name=name)
+        if Directory.exists(name, encrypted_user_id):
+            testing_subdirectory = Directory.objects.get(name=name, user_id=encrypted_user_id)
             return testing_subdirectory in self.contains_directories
         else:
             return False
 
     @classmethod
-    def exists(cls, name: str) -> bool:
-        if cls.objects.get(name=name):
+    def exists(cls, name: str, encrypted_user_id: bytes) -> bool:
+        if cls.objects.get(name=name, user_id=encrypted_user_id):
             return True
 
         return False

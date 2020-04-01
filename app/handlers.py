@@ -1,5 +1,5 @@
 from app import logger
-from app import models
+from app.models import File, Directory
 from app.config import ROOT_DIRECTORY, CANCEL_BUTTON, DIRECTORY_ACTIONS
 from telegram.error import BadRequest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -39,12 +39,21 @@ class PreProcessors:
 class BaseHandlers:
     @staticmethod
     def error(update, context):
-        """Log Errors caused by Updates."""
+        """ Log Errors caused by Updates.
+        """
         logger.warning(f'{context.error}')
 
     @staticmethod
     def start(update, context):
         logger.info('New user joined')
+        root_directory = Directory.objects.get(
+            name=ROOT_DIRECTORY,
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
+        if root_directory:
+            pass
+        else:
+            Directory(name=ROOT_DIRECTORY, user_id=update.effective_user.id).save()
         update.message.reply_text('Welcome to Telegram Cloud bot. I will help you to store an manage your photos. '
                                   'Now you are in a root directory. '
                                   'You can upload your photos here, or create you on directories to '
@@ -108,14 +117,17 @@ class FileSystemHandlers:
         """
         name = name[0]
         # check if directory exists
-        if models.Directory.exists(name):
+        if Directory.exists(name, Directory.encrypt_user_id(update.effective_user.id)):
             update.message.reply_text(f"The directory '{name}' already exists")
         else:
             # create new directory
-            new_directory = models.Directory(name=name)
+            new_directory = Directory(name=name, user_id=update.effective_user.id)
             new_directory.save()
             # add new directory as a sub directory to current_directory
-            current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+            current_directory = Directory.objects.get(
+                name=context.chat_data.get('current_directory'),
+                user_id=Directory.encrypt_user_id(update.effective_user.id)
+            )
             current_directory.update(add_to_set__contains_directories=new_directory)
             current_directory.save()
             update.message.reply_text(
@@ -130,7 +142,10 @@ class FileSystemHandlers:
         :param update: Telegram chat data
         :param context: Telegram chat data
         """
-        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        current_directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
 
         if current_directory.contains_directories:
 
@@ -155,7 +170,10 @@ class FileSystemHandlers:
         :param update: Telegram chat data
         :param context: Telegram chat data
         """
-        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        current_directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
         if current_directory.contains_directories:
             subdirectories = reduce(
                 lambda res, directory: f"{res} {directory.name}",
@@ -186,7 +204,10 @@ class FileSystemHandlers:
         """ Create a buttons template. Buttons are names of subdirectories, that current directory contains.
             By clicking on one of buttons user will be redirected to selected directory
         """
-        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        current_directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
         if current_directory.contains_directories:
 
             keyboard = FileSystemHandlers.__create_subdirectories_keyboard(
@@ -207,8 +228,14 @@ class FileSystemHandlers:
     def return_to_parent_directory(update, context):
         """ Moving user back to parent directory of current directory
         """
-        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
-        parent_directory = models.Directory.objects.get(contains_directories=current_directory)
+        current_directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
+        parent_directory = Directory.objects.get(
+            contains_directories=current_directory,
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
 
         def __handle_successfully_switched():
             context.chat_data['current_directory'] = parent_directory.name
@@ -236,10 +263,13 @@ class FileSystemHandlers:
         """
         query = update.callback_query
         action, directory = query.data.split(',')
-        current_directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        current_directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
 
         def _goto_handler(directory_name):
-            if current_directory.has_subdirectory(directory_name):
+            if current_directory.has_subdirectory(directory_name, Directory.encrypt_user_id(update.effective_user.id)):
                 context.chat_data['current_directory'] = directory_name
                 query.answer()
                 query.edit_message_text(text=f"You now switched to directory {directory_name}")
@@ -253,8 +283,11 @@ class FileSystemHandlers:
                 query.edit_message_text(f"Wow, you've broke me somehow..\nSo i switched you to root directory")
 
         def _delete_handler(directory_name):
-            if current_directory.has_subdirectory(directory_name):
-                subdirectory = models.Directory.objects.get(name=directory_name)
+            if current_directory.has_subdirectory(directory_name, Directory.encrypt_user_id(update.effective_user.id)):
+                subdirectory = Directory.objects.get(
+                    name=directory_name,
+                    user_id=Directory.encrypt_user_id(update.effective_user.id)
+                )
                 subdirectory.delete()
 
                 query.edit_message_text(
@@ -283,10 +316,13 @@ class MediaHandlers:
         """ Add given photo to current directory
         """
         # create new record about the file in the DB
-        photo = models.File(telegram_id=update.message.message_id)
+        photo = File(telegram_id=update.message.message_id)
         photo.save()
         # attach new file to current directory
-        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
         directory.update(add_to_set__contains_files=photo)
         directory.save()
         update.message.reply_text(f'Your file now live in directory {directory.name}')
@@ -296,7 +332,10 @@ class MediaHandlers:
     def show_photo(update, context):
         """ Send all photos from current directory
         """
-        directory = models.Directory.objects.get(name=context.chat_data.get('current_directory'))
+        directory = Directory.objects.get(
+            name=context.chat_data.get('current_directory'),
+            user_id=Directory.encrypt_user_id(update.effective_user.id)
+        )
         if not directory.contains_files:
             update.message.reply_text('There are no photos stored in current directory')
         else:
@@ -305,7 +344,7 @@ class MediaHandlers:
                     context.bot.forward_message(
                         chat_id=update.effective_chat.id,
                         from_chat_id=update.effective_chat.id,
-                        message_id=models.File.prepare_telegram_id(photo.telegram_id)
+                        message_id=File.prepare_telegram_id(photo.telegram_id)
                     )
                 except BadRequest as bad_request:
                     no_message = 'Message to forward not found'
